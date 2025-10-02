@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  meetingbot:
+    build: .
+    container_name: meetingbot
+    env_file:
+      - .env
+    volumes:
+      # Пробрасываем sessions/ наружу для сохранения скриншотов
+      - ./sessions:/app/sessions
+    # Добавляем shm-size для Chrome в headless режиме
+    shm_size: 2gb
+    restart: unless-stopped
