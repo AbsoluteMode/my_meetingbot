@@ -174,9 +174,10 @@ class ZoomConnector(BaseMeetingConnector):
 
             # Находим родительские кнопки для Mute и Stop Video
             print("\n🔍 Ищу кнопки по aria-label...")
+            print("   ℹ️  Звук динамиков управляется браузером автоматически")
 
-            # Клик "Mute" - используем JavaScript клик (headless compatible)
-            print("\n🔇 Нажимаю кнопку 'Mute'...")
+            # Клик "Mute" микрофон - используем JavaScript клик (headless compatible)
+            print("\n🔇 Нажимаю кнопку 'Mute' (микрофон)...")
             try:
                 clicked = self.driver.execute_script("""
                     var elem = document.elementFromPoint(339, 486);
@@ -330,4 +331,114 @@ class ZoomConnector(BaseMeetingConnector):
             print(f"❌ Ошибка подключения к {self.get_platform_name()}: {e}")
             import traceback
             traceback.print_exc()
+            return False
+
+    def leave_meeting(self) -> bool:
+        """Выйти из Zoom встречи"""
+        try:
+            print(f"🚪 Выхожу из {self.get_platform_name()} встречи...")
+
+            # Сначала выходим из iframe если мы в нём
+            try:
+                self.driver.switch_to.default_content()
+            except:
+                pass
+
+            # Переключаемся в iframe
+            try:
+                iframe = self.driver.find_element("id", "webclient")
+                self.driver.switch_to.frame(iframe)
+                print(f"   ✅ Переключился в iframe")
+            except Exception as e:
+                print(f"   ⚠️  Не удалось переключиться в iframe: {e}")
+                return False
+
+            # Кликаем по координатам кнопки Leave (x: 1142-1178, y: 668-708)
+            leave_x = 1160  # Середина диапазона 1142-1178
+            leave_y = 688   # Середина диапазона 668-708
+
+            print(f"   🖱️  Кликаю на Leave кнопку ({leave_x}, {leave_y})...")
+
+            clicked = self.driver.execute_script(f"""
+                var elem = document.elementFromPoint({leave_x}, {leave_y});
+                // Поднимаемся по DOM до тега BUTTON
+                while (elem && elem.tagName !== 'BUTTON') {{
+                    elem = elem.parentElement;
+                }}
+                if (elem) {{
+                    console.log('Leave button:', elem);
+                    elem.click();
+                    return {{success: true, aria: elem.getAttribute('aria-label'), text: elem.textContent}};
+                }}
+                return {{success: false}};
+            """)
+
+            if clicked.get('success'):
+                print(f"   ✅ Нажал кнопку Leave: '{clicked.get('text')}' (aria: {clicked.get('aria')})")
+                time.sleep(2)
+
+                # Если появился диалог подтверждения - ищем "Leave Meeting" кнопку
+                confirm_clicked = self.driver.execute_script("""
+                    var buttons = document.querySelectorAll('button');
+                    for (var i = 0; i < buttons.length; i++) {
+                        var btn = buttons[i];
+                        var text = btn.textContent || btn.innerText || '';
+                        if (text.toLowerCase().includes('leave meeting')) {
+                            console.log('Confirming leave:', btn);
+                            btn.click();
+                            return {success: true, text: text};
+                        }
+                    }
+                    return {success: false};
+                """)
+
+                if confirm_clicked.get('success'):
+                    print(f"   ✅ Подтвердил выход: {confirm_clicked.get('text')}")
+
+                return True
+            else:
+                print(f"   ⚠️  Кнопка Leave не найдена в точке ({leave_x}, {leave_y})")
+                return False
+
+        except Exception as e:
+            print(f"   ❌ Ошибка при выходе: {e}")
+            return False
+
+    def check_in_meeting(self) -> bool:
+        """Проверить находится ли бот в Zoom встрече"""
+        try:
+            # Переключаемся в iframe
+            try:
+                self.driver.switch_to.default_content()
+                iframe = self.driver.find_element("id", "webclient")
+                self.driver.switch_to.frame(iframe)
+            except:
+                # Если iframe не найден - встреча завершена
+                return False
+
+            # Проверяем наличие кнопки Leave по координатам
+            leave_x = 1160
+            leave_y = 688
+
+            leave_exists = self.driver.execute_script(f"""
+                var elem = document.elementFromPoint({leave_x}, {leave_y});
+                // Поднимаемся по DOM до тега BUTTON
+                while (elem && elem.tagName !== 'BUTTON') {{
+                    elem = elem.parentElement;
+                }}
+                if (elem) {{
+                    var text = elem.textContent || elem.innerText || '';
+                    var aria = elem.getAttribute('aria-label') || '';
+                    // Проверяем что это действительно кнопка Leave
+                    if (text.toLowerCase().includes('leave') || aria.toLowerCase().includes('leave')) {{
+                        return true;
+                    }}
+                }}
+                return false;
+            """)
+
+            return leave_exists
+
+        except Exception as e:
+            # Если произошла ошибка - считаем что встреча завершена
             return False

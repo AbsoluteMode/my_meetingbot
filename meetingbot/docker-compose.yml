@@ -11,4 +11,7 @@ services:
       - ./sessions:/app/sessions
     # Добавляем shm-size для Chrome в headless режиме
     shm_size: 2gb
-    restart: unless-stopped
+    # Убираем автоперезапуск - бот должен завершиться после AUTO_DISCONNECT_SECONDS
+    # restart: unless-stopped
+    # Увеличиваем таймаут для graceful shutdown (по умолчанию 10 сек)
+    stop_grace_period: 30s

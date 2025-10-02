@@ -6,6 +6,8 @@ MeetingBot - автоматизация встреч
 import os
 import time
 import random
+import signal
+import sys
 from datetime import datetime
 from pathlib import Path
 from selenium import webdriver
@@ -14,6 +16,7 @@ from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 from dotenv import load_dotenv
 from connectors import ZoomConnector
+from recorder import ScreenRecorder
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -26,6 +29,8 @@ WINDOW_WIDTH = int(os.getenv("WINDOW_WIDTH", "1920"))
 WINDOW_HEIGHT = int(os.getenv("WINDOW_HEIGHT", "1080"))
 SCREENSHOT_DELAY = int(os.getenv("SCREENSHOT_DELAY", "3"))
 CONNECTOR_TYPE = os.getenv("CONNECTOR_TYPE", "zoom").lower()
+ENABLE_RECORDING = os.getenv("ENABLE_RECORDING", "false").lower() == "true"
+MAX_MEETING_DURATION_SECONDS = int(os.getenv("MAX_MEETING_DURATION_SECONDS", "7200"))  # 2 часа по умолчанию
 
 # Пути
 BASE_DIR = Path(__file__).parent
@@ -39,6 +44,7 @@ class MeetingBot:
     def __init__(self):
         self.driver = None
         self.connector = None
+        self.recorder = None
         self.session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.session_dir = SESSIONS_DIR / self.session_id
         self.screenshots_dir = self.session_dir / "screenshots"
@@ -51,17 +57,26 @@ class MeetingBot:
 
         chrome_options = Options()
 
-        if HEADLESS:
+        # ВАЖНО: если запись включена, НЕ используем headless
+        # Chrome должен рендериться на Xvfb display для записи ffmpeg
+        if HEADLESS and not ENABLE_RECORDING:
             chrome_options.add_argument("--headless=new")
             print("   Режим: headless (без GUI)")
         else:
-            print("   Режим: с отображением браузера")
+            if ENABLE_RECORDING:
+                print("   Режим: с GUI на Xvfb (для записи)")
+            else:
+                print("   Режим: с отображением браузера")
 
         # Базовые опции
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument(f"--window-size={WINDOW_WIDTH},{WINDOW_HEIGHT}")
         chrome_options.add_argument("--disable-gpu")
+
+        # Аудио опции для PulseAudio
+        chrome_options.add_argument("--enable-audio-service-sandbox=false")
+        chrome_options.add_argument("--autoplay-policy=no-user-gesture-required")
 
         # Антидетект опции
         chrome_options.add_argument("--disable-blink-features=AutomationControlled")  # Скрыть автоматизацию
@@ -126,14 +141,47 @@ class MeetingBot:
         return screenshot_path
 
     def close(self):
-        """Закрывает браузер"""
+        """Закрывает браузер и останавливает запись"""
+        # Выходим из встречи
+        if self.connector and self.driver:
+            print("\n👋 Выхожу из встречи...")
+            try:
+                # Проверяем что driver ещё жив
+                self.driver.current_url  # Попытка обращения к driver
+                self.connector.leave_meeting()
+            except Exception as e:
+                print(f"   ⚠️  Не удалось выйти из встречи: {e}")
+                print(f"   (Driver возможно уже закрыт)")
+
+        # Останавливаем запись ПЕРЕД закрытием браузера
+        if self.recorder and self.recorder.is_recording():
+            print("\n🛑 Останавливаю запись...")
+            self.recorder.stop()
+            # Даём ffmpeg время на финализацию
+            time.sleep(2)
+
+        # Закрываем браузер
         if self.driver:
             print("\n🛑 Закрываю браузер...")
-            self.driver.quit()
-            print("✅ Браузер закрыт")
+            try:
+                self.driver.quit()
+                print("✅ Браузер закрыт")
+            except Exception as e:
+                print(f"   ⚠️  Ошибка при закрытии браузера: {e}")
+
+    def signal_handler(self, sig, frame):
+        """Обработчик сигналов для graceful shutdown"""
+        print(f"\n\n⚠️  Получен сигнал {sig} (Docker stop или Ctrl+C)")
+        print("🔄 Корректное завершение...")
+        self.close()
+        sys.exit(0)
 
     def run(self):
         """Основной процесс бота"""
+        # Регистрируем обработчики сигналов
+        signal.signal(signal.SIGTERM, self.signal_handler)  # Docker stop
+        signal.signal(signal.SIGINT, self.signal_handler)   # Ctrl+C
+
         try:
             print("="*60)
             print("🤖 MeetingBot запущен")
@@ -150,18 +198,63 @@ class MeetingBot:
                 print(f"❌ Не удалось подключиться к встрече")
                 return
 
+            # Запуск записи ПОСЛЕ успешного подключения
+            if ENABLE_RECORDING:
+                recording_path = self.session_dir / "recording.mp4"
+                self.recorder = ScreenRecorder(
+                    output_path=recording_path,
+                    resolution=f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}"
+                )
+                if not self.recorder.start():
+                    print("⚠️  Не удалось запустить запись, продолжаем без неё...")
+                    self.recorder = None
+
             print("\n" + "="*60)
-            print("✅ Задача выполнена успешно!")
+            print("✅ Подключение к встрече успешно!")
             print(f"   Скриншоты сохранены в: {self.screenshots_dir}")
             print("="*60)
-            print("\n⏸️  Бот продолжает работу. Нажмите Ctrl+C для выхода...")
 
-            # Ждем пока пользователь не закроет
-            try:
-                while True:
-                    time.sleep(1)
-            except KeyboardInterrupt:
-                print("\n\n👋 Получен сигнал остановки...")
+            # Мониторинг встречи
+            print(f"\n⏱️  Мониторинг встречи...")
+            print(f"   📏 Максимальная длительность: {MAX_MEETING_DURATION_SECONDS // 60} минут ({MAX_MEETING_DURATION_SECONDS} сек)")
+            print(f"   🔍 Проверка кнопки Leave каждую секунду")
+            print(f"   🚪 Выход при: 1) истечении времени, 2) исчезновении кнопки Leave")
+            print(f"\n⏸️  Бот на встрече. Нажмите Ctrl+C для досрочного выхода...\n")
+
+            start_time = time.time()
+            check_counter = 0
+
+            while True:
+                elapsed_time = time.time() - start_time
+
+                # Проверка 1: Превышено максимальное время
+                if elapsed_time >= MAX_MEETING_DURATION_SECONDS:
+                    elapsed_min = int(elapsed_time // 60)
+                    print(f"\n\n⏰ Достигнута максимальная длительность встречи ({elapsed_min} минут)")
+                    print("   Завершаю сессию...")
+                    self.close()
+                    return
+
+                # Проверка 2: Кнопка Leave исчезла (КАЖДУЮ СЕКУНДУ)
+                in_meeting = self.connector.check_in_meeting()
+
+                elapsed_min = int(elapsed_time // 60)
+                elapsed_sec = int(elapsed_time % 60)
+
+                if not in_meeting:
+                    print(f"\n\n🚪 Кнопка Leave исчезла (встреча завершена или бот выгнан)")
+                    print(f"   Время в встрече: {elapsed_min}м {elapsed_sec}с")
+                    print("   Завершаю сессию...")
+                    self.close()
+                    return
+
+                # Статус каждую минуту
+                if check_counter > 0 and check_counter % 60 == 0:
+                    remaining_min = (MAX_MEETING_DURATION_SECONDS - elapsed_time) // 60
+                    print(f"   ✅ В встрече: {elapsed_min}м {elapsed_sec}с | Осталось до автовыхода: ~{int(remaining_min)}м")
+
+                time.sleep(1)
+                check_counter += 1
 
         except Exception as e:
             print(f"\n❌ Ошибка: {e}")

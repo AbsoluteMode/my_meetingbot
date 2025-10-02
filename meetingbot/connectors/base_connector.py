@@ -40,3 +40,23 @@ class BaseMeetingConnector(ABC):
             str: Название платформы (например, "Zoom", "Google Meet")
         """
         pass
+
+    @abstractmethod
+    def leave_meeting(self) -> bool:
+        """
+        Выйти из встречи
+
+        Returns:
+            bool: True если успешно вышли, False иначе
+        """
+        pass
+
+    @abstractmethod
+    def check_in_meeting(self) -> bool:
+        """
+        Проверить находится ли бот во встрече
+
+        Returns:
+            bool: True если в встрече (кнопка Leave есть), False если встреча завершена
+        """
+        pass
