@@ -90,6 +90,21 @@ class MeetingBot:
         chrome_options.add_argument("--use-fake-ui-for-media-stream")  # Автоматически разрешать доступ к микро/камере
         chrome_options.add_argument("--use-fake-device-for-media-stream")  # Использовать виртуальные устройства
 
+        # Отключаем всплывающие диалоги Chrome
+        chrome_options.add_argument("--deny-permission-prompts")  # Автоматически отклонять все запросы permissions
+        chrome_options.add_argument("--disable-popup-blocking")  # Отключить блокировщик попапов
+        chrome_options.add_argument("--disable-notifications")  # Отключить уведомления
+        chrome_options.add_experimental_option("prefs", {
+            "profile.default_content_setting_values.notifications": 2,  # Блокировать уведомления
+            "protocol_handler": {
+                "excluded_schemes": {
+                    "zoommtg": False,
+                    "zoomus": False
+                }
+            }
+        })
+        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation", "disable-component-update"])
+
         # Инициализация драйвера
         service = Service(ChromeDriverManager().install())
         self.driver = webdriver.Chrome(service=service, options=chrome_options)

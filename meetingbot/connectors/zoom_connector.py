@@ -84,6 +84,34 @@ class ZoomConnector(BaseMeetingConnector):
             if self.take_screenshot:
                 self.take_screenshot("01_page_loaded.png")
 
+            # Закрываем xdg-open диалог через xdotool (реальный X11 клик)
+            print("\n🧹 Закрываю xdg-open диалог (xdotool)...")
+            try:
+                import subprocess
+
+                # Координаты кнопки Cancel: (710, 280)
+                # xdotool кликает на реальные координаты экрана X11
+                result = subprocess.run(
+                    ['xdotool', 'mousemove', '710', '280', 'click', '1'],
+                    env={'DISPLAY': ':99'},
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+
+                if result.returncode == 0:
+                    print(f"   ✅ xdotool клик выполнен (710, 280)")
+                else:
+                    print(f"   ⚠️  xdotool ошибка: {result.stderr}")
+
+                time.sleep(1)
+
+            except Exception as e:
+                print(f"   ⚠️  Ошибка xdotool: {e}")
+
+            if self.take_screenshot:
+                self.take_screenshot("01b_after_xdg_close.png")
+
             # Клик по кнопке "Принять куки"
             print("\n🍪 Нажимаю кнопку 'Принять куки'...")
             self._human_like_click(677, 262)
@@ -321,6 +349,38 @@ class ZoomConnector(BaseMeetingConnector):
             self._human_like_delay(2, 3)
             if self.take_screenshot:
                 self.take_screenshot("08_after_join.png")
+
+            # Дополнительный клик через 3 секунды (закрытие диалога/уведомления)
+            print("\n⏳ Ожидание 3 секунды перед дополнительным кликом...")
+            self._human_like_delay(3, 3)
+
+            print(f"🖱️  Клик по (660, 200)...")
+            clicked = self.driver.execute_script("""
+                var elem = document.elementFromPoint(660, 200);
+                if (elem) {
+                    var events = ['mousedown', 'mouseup', 'click'];
+                    events.forEach(function(eventType) {
+                        var event = new MouseEvent(eventType, {
+                            'view': window,
+                            'bubbles': true,
+                            'cancelable': true,
+                            'clientX': 660,
+                            'clientY': 200
+                        });
+                        elem.dispatchEvent(event);
+                    });
+                    return {success: true, tag: elem.tagName, text: elem.textContent.substring(0, 50)};
+                }
+                return {success: false};
+            """)
+
+            if clicked.get('success'):
+                print(f"   ✅ Клик выполнен: {clicked.get('tag')} - '{clicked.get('text')}'")
+            else:
+                print(f"   ℹ️  Элемент не найден (возможно диалог не появился)")
+
+            if self.take_screenshot:
+                self.take_screenshot("09_after_dialog_click.png")
 
             print(f"📄 Заголовок страницы: {self.driver.title}")
             print(f"✅ Успешно подключился к {self.get_platform_name()}")

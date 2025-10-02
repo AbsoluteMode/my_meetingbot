@@ -8,11 +8,17 @@ RUN apt-get update && apt-get install -y \
     xvfb \
     x11-utils \
     pulseaudio \
+    xdotool \
     && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg \
     && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list \
     && apt-get update \
     && apt-get install -y google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
+
+# Удаляем/блокируем xdg-open чтобы Zoom не пытался открыть desktop приложение
+RUN rm -f /usr/bin/xdg-open && \
+    echo '#!/bin/bash\nexit 0' > /usr/bin/xdg-open && \
+    chmod +x /usr/bin/xdg-open
 
 # Рабочая директория
 WORKDIR /app
