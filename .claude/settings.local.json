@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(source:*)",
+      "Bash(pip install:*)",
+      "Bash(sudo apt-get:*)",
+      "Bash(sudo apt-get install:*)",
+      "Bash(wget:*)",
+      "Bash(unzip:*)",
+      "Bash(python:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(chmod:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
