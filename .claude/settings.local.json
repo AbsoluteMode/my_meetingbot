@@ -16,7 +16,8 @@
       "WebFetch(domain:gist.github.com)",
       "WebFetch(domain:stackoverflow.com)",
       "Bash(ffmpeg:*)",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Bash(ffprobe:*)"
     ],
     "deny": [],
     "ask": []

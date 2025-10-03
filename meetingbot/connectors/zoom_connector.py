@@ -18,8 +18,12 @@ class ZoomConnector(BaseMeetingConnector):
         print(f"⏳ Задержка {delay:.2f} сек...")
         time.sleep(delay)
 
-    def _human_like_click(self, x, y, x_variance=5, y_variance=5, show_marker=True):
-        """Эмулирует человеческий клик по координатам через JavaScript"""
+    def _human_like_click(self, x, y, x_variance=5, y_variance=5, show_marker=True, screenshot_name=None):
+        """Эмулирует человеческий клик по координатам через JavaScript
+
+        Args:
+            screenshot_name: имя скриншота С маркером (делается до клика)
+        """
         print(f"🖱️  Клик по координатам ({x}, {y})...")
 
         # Добавляем случайность к координатам
@@ -43,6 +47,12 @@ class ZoomConnector(BaseMeetingConnector):
                 marker.style.transform = 'translate(-50%, -50%)';
                 document.body.appendChild(marker);
             """)
+
+            # Скриншот с маркером ДО клика
+            if screenshot_name and self.take_screenshot:
+                time.sleep(0.3)  # Даём маркеру отрисоваться
+                self.take_screenshot(screenshot_name)
+                print(f"   📸 Скриншот с маркером: {screenshot_name}")
 
         # Прямой JavaScript клик
         clicked = self.driver.execute_script(f"""
@@ -84,15 +94,36 @@ class ZoomConnector(BaseMeetingConnector):
             if self.take_screenshot:
                 self.take_screenshot("01_page_loaded.png")
 
+            # Прокрутка страницы вниз для 800x600
+            print("\n📜 Прокрутка страницы вниз...")
+            self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            self._human_like_delay(1, 1)
+            if self.take_screenshot:
+                self.take_screenshot("01a_after_scroll.png")
+
+            # Клик по центральной кнопке после скрола (с маркером на скриншоте)
+            print("\n🖱️  Клик по центральной кнопке...")
+            self._human_like_click(400, 208, x_variance=0, y_variance=0, screenshot_name="01b_center_click_MARKER.png")
+            self._human_like_delay(2, 3)
+            if self.take_screenshot:
+                self.take_screenshot("01c_after_center_click.png")
+
+            # Клик по ссылке (536, 392)
+            print("\n🔗 Клик по ссылке...")
+            self._human_like_click(536, 392, x_variance=0, y_variance=0, screenshot_name="01d_link_click_MARKER.png")
+            self._human_like_delay(2, 3)
+            if self.take_screenshot:
+                self.take_screenshot("01e_after_link_click.png")
+
             # Закрываем xdg-open диалог через xdotool (реальный X11 клик)
             print("\n🧹 Закрываю xdg-open диалог (xdotool)...")
             try:
                 import subprocess
 
-                # Координаты кнопки Cancel: (710, 280)
+                # Координаты кнопки Cancel (800x600: 510, 275)
                 # xdotool кликает на реальные координаты экрана X11
                 result = subprocess.run(
-                    ['xdotool', 'mousemove', '710', '280', 'click', '1'],
+                    ['xdotool', 'mousemove', '510', '275', 'click', '1'],
                     env={'DISPLAY': ':99'},
                     capture_output=True,
                     text=True,
@@ -100,7 +131,7 @@ class ZoomConnector(BaseMeetingConnector):
                 )
 
                 if result.returncode == 0:
-                    print(f"   ✅ xdotool клик выполнен (710, 280)")
+                    print(f"   ✅ xdotool клик выполнен (510, 275)")
                 else:
                     print(f"   ⚠️  xdotool ошибка: {result.stderr}")
 
@@ -112,26 +143,7 @@ class ZoomConnector(BaseMeetingConnector):
             if self.take_screenshot:
                 self.take_screenshot("01b_after_xdg_close.png")
 
-            # Клик по кнопке "Принять куки"
-            print("\n🍪 Нажимаю кнопку 'Принять куки'...")
-            self._human_like_click(677, 262)
-            self._human_like_delay(2, 3)
-            if self.take_screenshot:
-                self.take_screenshot("02_after_cookie_accept.png")
-
-            # Клик по кнопке "Присоединиться"
-            print("\n🎥 Нажимаю кнопку 'Присоединиться'...")
-            self._human_like_click(592, 439)
-            self._human_like_delay(2, 3)
-            if self.take_screenshot:
-                self.take_screenshot("03_after_join.png")
-
-            # Клик по ссылке "Join from your browser"
-            print("\n🌐 Нажимаю 'Join from your browser'...")
-            self._human_like_click(736, 616)
-            self._human_like_delay(3, 5)
-            if self.take_screenshot:
-                self.take_screenshot("04_after_browser_join.png")
+            # Старые клики для 1200x800 УДАЛЕНЫ (заменены на скрол + 2 клика выше)
 
             # Переключаемся в iframe где находится Zoom интерфейс
             print("\n🔄 Переключаюсь в iframe Zoom...")
@@ -145,9 +157,9 @@ class ZoomConnector(BaseMeetingConnector):
                 # Выводим информацию об элементах по нашим координатам
                 print("\n🔍 Ищу селекторы элементов...")
 
-                # Mute button
+                # Mute button (800x600)
                 mute_info = self.driver.execute_script("""
-                    var elem = document.elementFromPoint(339, 486);
+                    var elem = document.elementFromPoint(350, 212);
                     if (elem) {
                         return {
                             tag: elem.tagName,
@@ -160,11 +172,11 @@ class ZoomConnector(BaseMeetingConnector):
                     }
                     return null;
                 """)
-                print(f"   Mute (339, 486): {mute_info}")
+                print(f"   Mute (350, 212): {mute_info}")
 
-                # Stop Video button
+                # Stop Video button (800x600)
                 video_info = self.driver.execute_script("""
-                    var elem = document.elementFromPoint(427, 486);
+                    var elem = document.elementFromPoint(437, 212);
                     if (elem) {
                         return {
                             tag: elem.tagName,
@@ -177,11 +189,11 @@ class ZoomConnector(BaseMeetingConnector):
                     }
                     return null;
                 """)
-                print(f"   Stop Video (427, 486): {video_info}")
+                print(f"   Stop Video (437, 212): {video_info}")
 
-                # Name input
+                # Name input (800x600)
                 name_info = self.driver.execute_script("""
-                    var elem = document.elementFromPoint(969, 256);
+                    var elem = document.elementFromPoint(395, 386);
                     if (elem) {
                         return {
                             tag: elem.tagName,
@@ -204,11 +216,36 @@ class ZoomConnector(BaseMeetingConnector):
             print("\n🔍 Ищу кнопки по aria-label...")
             print("   ℹ️  Звук динамиков управляется браузером автоматически")
 
-            # Клик "Mute" микрофон - используем JavaScript клик (headless compatible)
+            # Задержка перед кликами Mute/Video
+            print("\n⏳ Ожидание 3 секунды перед кликами Mute/Video...")
+            self._human_like_delay(3, 3)
+
+            # Клик "Mute" микрофон (800x600: 350, 212)
             print("\n🔇 Нажимаю кнопку 'Mute' (микрофон)...")
             try:
+                # Добавляем маркер
+                self.driver.execute_script("""
+                    var marker = document.createElement('div');
+                    marker.id = 'mute-marker';
+                    marker.style.position = 'fixed';
+                    marker.style.left = '350px';
+                    marker.style.top = '212px';
+                    marker.style.width = '20px';
+                    marker.style.height = '20px';
+                    marker.style.borderRadius = '50%';
+                    marker.style.backgroundColor = 'red';
+                    marker.style.border = '3px solid yellow';
+                    marker.style.zIndex = '999999';
+                    marker.style.pointerEvents = 'none';
+                    marker.style.transform = 'translate(-50%, -50%)';
+                    document.body.appendChild(marker);
+                """)
+                time.sleep(0.3)
+                if self.take_screenshot:
+                    self.take_screenshot("05a_mute_MARKER.png")
+
                 clicked = self.driver.execute_script("""
-                    var elem = document.elementFromPoint(339, 486);
+                    var elem = document.elementFromPoint(350, 212);
                     // Поднимаемся по DOM до тега BUTTON
                     while (elem && elem.tagName !== 'BUTTON') {
                         elem = elem.parentElement;
@@ -230,13 +267,34 @@ class ZoomConnector(BaseMeetingConnector):
 
             self._human_like_delay(1, 2)
             if self.take_screenshot:
-                self.take_screenshot("05_after_mute.png")
+                self.take_screenshot("05b_after_mute.png")
 
-            # Клик "Stop Video" - используем JavaScript клик (headless compatible)
+            # Клик "Stop Video" (800x600: 437, 212)
             print("\n📹 Нажимаю кнопку 'Stop Video'...")
             try:
+                # Добавляем маркер
+                self.driver.execute_script("""
+                    var marker = document.createElement('div');
+                    marker.id = 'video-marker';
+                    marker.style.position = 'fixed';
+                    marker.style.left = '437px';
+                    marker.style.top = '212px';
+                    marker.style.width = '20px';
+                    marker.style.height = '20px';
+                    marker.style.borderRadius = '50%';
+                    marker.style.backgroundColor = 'red';
+                    marker.style.border = '3px solid yellow';
+                    marker.style.zIndex = '999999';
+                    marker.style.pointerEvents = 'none';
+                    marker.style.transform = 'translate(-50%, -50%)';
+                    document.body.appendChild(marker);
+                """)
+                time.sleep(0.3)
+                if self.take_screenshot:
+                    self.take_screenshot("06a_video_MARKER.png")
+
                 clicked = self.driver.execute_script("""
-                    var elem = document.elementFromPoint(427, 486);
+                    var elem = document.elementFromPoint(437, 212);
                     // Поднимаемся по DOM до тега BUTTON
                     while (elem && elem.tagName !== 'BUTTON') {
                         elem = elem.parentElement;
@@ -322,11 +380,11 @@ class ZoomConnector(BaseMeetingConnector):
             if self.take_screenshot:
                 self.take_screenshot("07_after_name_input.png")
 
-            # Клик "Join" - входим в конференцию
+            # Клик "Join" - входим в конференцию (800x600: 394, 507)
             print("\n🚪 Нажимаю кнопку 'Join'...")
             try:
                 clicked = self.driver.execute_script("""
-                    var elem = document.elementFromPoint(969, 379);
+                    var elem = document.elementFromPoint(394, 507);
                     // Поднимаемся по DOM до тега BUTTON
                     while (elem && elem.tagName !== 'BUTTON') {
                         elem = elem.parentElement;
@@ -413,9 +471,9 @@ class ZoomConnector(BaseMeetingConnector):
                 print(f"   ⚠️  Не удалось переключиться в iframe: {e}")
                 return False
 
-            # Кликаем по координатам кнопки Leave (x: 1142-1178, y: 668-708)
-            leave_x = 1160  # Середина диапазона 1142-1178
-            leave_y = 688   # Середина диапазона 668-708
+            # Кликаем по координатам кнопки Leave (800x600: x: 735-785, y: 465-505)
+            leave_x = 760  # Середина диапазона 735-785
+            leave_y = 485  # Середина диапазона 465-505
 
             print(f"   🖱️  Кликаю на Leave кнопку ({leave_x}, {leave_y})...")
 
@@ -476,9 +534,9 @@ class ZoomConnector(BaseMeetingConnector):
                 # Если iframe не найден - встреча завершена
                 return False
 
-            # Проверяем наличие кнопки Leave по координатам
-            leave_x = 1160
-            leave_y = 688
+            # Проверяем наличие кнопки Leave по координатам (800x600)
+            leave_x = 760
+            leave_y = 485
 
             leave_exists = self.driver.execute_script(f"""
                 var elem = document.elementFromPoint({leave_x}, {leave_y});

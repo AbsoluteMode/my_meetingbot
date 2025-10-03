@@ -13,7 +13,6 @@ from pathlib import Path
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
 from dotenv import load_dotenv
 from connectors import ZoomConnector
 from recorder import ScreenRecorder
@@ -105,8 +104,8 @@ class MeetingBot:
         })
         chrome_options.add_experimental_option("excludeSwitches", ["enable-automation", "disable-component-update"])
 
-        # Инициализация драйвера
-        service = Service(ChromeDriverManager().install())
+        # Инициализация драйвера (используем встроенный chromedriver)
+        service = Service('/usr/local/bin/chromedriver')
         self.driver = webdriver.Chrome(service=service, options=chrome_options)
 
         # Инициализация коннектора
@@ -172,8 +171,25 @@ class MeetingBot:
         if self.recorder and self.recorder.is_recording():
             print("\n🛑 Останавливаю запись...")
             self.recorder.stop()
-            # Даём ffmpeg время на финализацию
-            time.sleep(2)
+            # Даём ffmpeg время на финализацию (увеличено до 5 сек)
+            print("   ⏳ Ожидание финализации видео...")
+            time.sleep(5)
+
+            # Создаём индикатор готовности файла
+            ready_file = self.session_dir / "RECORDING_READY.txt"
+            try:
+                recording_path = self.session_dir / "recording.mp4"
+                if recording_path.exists():
+                    size_mb = recording_path.stat().st_size / (1024 * 1024)
+                    ready_file.write_text(
+                        f"Запись готова к просмотру!\n\n"
+                        f"Файл: {recording_path.name}\n"
+                        f"Размер: {size_mb:.2f} MB\n"
+                        f"Сессия: {self.session_id}\n"
+                    )
+                    print(f"   ✅ Создан индикатор готовности: {ready_file.name}")
+            except Exception as e:
+                print(f"   ⚠️  Не удалось создать индикатор: {e}")
 
         # Закрываем браузер
         if self.driver:

@@ -18,6 +18,8 @@ class ScreenRecorder:
             fps: Частота кадров
         """
         self.output_path = output_path
+        # Временный файл - не будет виден пользователю до финализации
+        self.temp_path = output_path.parent / f"{output_path.stem}.tmp{output_path.suffix}"
         self.display = display
         self.resolution = resolution
         self.fps = fps
@@ -26,11 +28,13 @@ class ScreenRecorder:
     def start(self):
         """Запуск записи"""
         print(f"🎬 Запуск записи экрана...")
-        print(f"   Файл: {self.output_path}")
+        print(f"   Финальный файл: {self.output_path.name}")
+        print(f"   Временный файл: {self.temp_path.name}")
         print(f"   Разрешение: {self.resolution}")
         print(f"   FPS: {self.fps}")
 
         # ffmpeg команда для записи X11 display + PulseAudio
+        # ПИШЕМ ВО ВРЕМЕННЫЙ ФАЙЛ
         cmd = [
             "ffmpeg",
             "-f", "x11grab",
@@ -45,7 +49,7 @@ class ScreenRecorder:
             "-codec:a", "aac",
             "-b:a", "128k",
             "-y",  # Перезаписать если файл существует
-            str(self.output_path)
+            str(self.temp_path)  # Пишем во временный файл
         ]
 
         # Проверяем что display доступен
@@ -110,18 +114,30 @@ class ScreenRecorder:
             # Ждём завершения (увеличено до 10 секунд)
             try:
                 self.process.wait(timeout=10)
-                print(f"   ✅ Запись сохранена: {self.output_path}")
+                print(f"   ✅ Временный файл финализирован")
 
-                # Проверяем размер файла
-                if self.output_path.exists():
-                    size_mb = self.output_path.stat().st_size / (1024 * 1024)
-                    print(f"   📊 Размер файла: {size_mb:.2f} MB")
+                # Проверяем временный файл
+                if self.temp_path.exists():
+                    size_mb = self.temp_path.stat().st_size / (1024 * 1024)
+                    print(f"   📊 Размер временного файла: {size_mb:.2f} MB")
+
+                    # Переименовываем временный файл в финальный
+                    import shutil
+                    shutil.move(str(self.temp_path), str(self.output_path))
+                    print(f"   ✅ Файл готов: {self.output_path.name}")
 
                 return True
             except subprocess.TimeoutExpired:
                 print(f"   ⚠️  ffmpeg не завершился за 10 сек, принудительное завершение...")
                 self.process.kill()
                 self.process.wait()
+
+                # Пробуем переименовать даже после kill
+                if self.temp_path.exists():
+                    import shutil
+                    shutil.move(str(self.temp_path), str(self.output_path))
+                    print(f"   ⚠️  Файл сохранён (после kill): {self.output_path.name}")
+
                 return True
 
         except Exception as e:

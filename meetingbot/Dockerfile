@@ -1,9 +1,10 @@
 FROM python:3.11-bookworm
 
-# Установка зависимостей (Chrome, ffmpeg, Xvfb, PulseAudio, x11-utils)
+# Установка зависимостей (Chrome, ChromeDriver, ffmpeg, Xvfb, PulseAudio, x11-utils)
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
+    unzip \
     ffmpeg \
     xvfb \
     x11-utils \
@@ -14,6 +15,17 @@ RUN apt-get update && apt-get install -y \
     && apt-get update \
     && apt-get install -y google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
+
+# Установка ChromeDriver (matching Chrome version)
+RUN CHROME_VERSION=$(google-chrome --version | awk '{print $3}') \
+    && echo "Chrome version: $CHROME_VERSION" \
+    && wget -q "https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}/linux64/chromedriver-linux64.zip" -O /tmp/chromedriver.zip \
+    || wget -q "https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing/${CHROME_VERSION}/linux64/chromedriver-linux64.zip" -O /tmp/chromedriver.zip \
+    && unzip /tmp/chromedriver.zip -d /tmp/ \
+    && mv /tmp/chromedriver-linux64/chromedriver /usr/local/bin/chromedriver \
+    && chmod +x /usr/local/bin/chromedriver \
+    && rm -rf /tmp/chromedriver* \
+    && chromedriver --version
 
 # Удаляем/блокируем xdg-open чтобы Zoom не пытался открыть desktop приложение
 RUN rm -f /usr/bin/xdg-open && \
